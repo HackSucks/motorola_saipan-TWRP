@@ -1,0 +1,138 @@
+name: Build TWRP for Motorola Saipan
+
+on:
+  workflow_dispatch:
+    inputs:
+      clean_build:
+        description: 'Wipe workspace and rebuild from scratch?'
+        required: true
+        default: 'no'
+        type: choice
+        options:
+          - 'yes'
+          - 'no'
+
+jobs:
+  build:
+    runs-runs-on: ubuntu-22.04
+    steps:
+      - name: Handle workspace state
+        run: |
+          TWRP_DIR="$GITHUB_WORKSPACE/twrp"
+          IMG="$TWRP_DIR/out/target/product/saipan/boot.img"
+          CLEAN="${{ github.event.inputs.clean_build }}"
+
+          if [ "$CLEAN" = "yes" ]; then
+            echo "Clean build requested — wiping workspace."
+            sudo rm -rf "$TWRP_DIR" "$GITHUB_WORKSPACE/apt-cache"
+            echo "SKIP_BUILD=false" >> $GITHUB_ENV
+          elif [ -f "$IMG" ]; then
+            echo "Existing build found — skipping to upload."
+            echo "SKIP_BUILD=true" >> $GITHUB_ENV
+          else
+            echo "Starting fresh build."
+            sudo rm -rf "$TWRP_DIR" "$GITHUB_WORKSPACE/apt-cache"
+            echo "SKIP_BUILD=false" >> $GITHUB_ENV
+          fi
+
+      - name: Maximize build space
+        if: env.SKIP_BUILD == 'false'
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 8192
+          swap-size-mb: 4096
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+
+      - name: Setup build environment
+        if: env.SKIP_BUILD == 'false'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git-core gnupg flex bison build-essential \
+            zip curl libc6-dev libncurses5-dev \
+            libx11-dev lib32z1-dev libgl1-mesa-dev \
+            libxml2-utils xsltproc unzip python3 \
+            libssl-dev bc ccache lz4 schedtool \
+            python-is-python3 rsync
+
+      - name: Setup repo tool
+        if: env.SKIP_BUILD == 'false'
+        run: |
+          mkdir -p ~/bin
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+          chmod a+x ~/bin/repo
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Configure git
+        if: env.SKIP_BUILD == 'false'
+        run: |
+          git config --global user.email "build@github.com"
+          git config --global user.name "GitHub Actions"
+
+      - name: Init TWRP manifest
+        if: env.SKIP_BUILD == 'false'
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/twrp
+          cd $GITHUB_WORKSPACE/twrp
+          repo init \
+            -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git \
+            -b twrp-12.1 \
+            --depth=1
+
+      - name: Sync sources
+        if: env.SKIP_BUILD == 'false'
+        run: |
+          cd $GITHUB_WORKSPACE/twrp
+          repo sync -c -j$(nproc) --no-clone-bundle --no-tags --optimized-fetch --prune
+
+      - name: Clone device tree
+        if: env.SKIP_BUILD == 'false'
+        run: |
+          cd $GITHUB_WORKSPACE/twrp
+          git clone https://github.com/HackSucks/motorola_saipan-TWRP.git \
+            -b main \
+            --depth=1 \
+            device/motorola/saipan
+
+      - name: Set build version name
+        run: |
+          BUILD_DATE=$(date +%Y%m%d)
+          echo "CUSTOM_BUILD_NAME=TWRP-Saipan-12.1-${BUILD_DATE}" >> $GITHUB_ENV
+
+      - name: Build TWRP
+        if: env.SKIP_BUILD == 'false'
+        run: |
+          cd $GITHUB_WORKSPACE/twrp
+          export ALLOW_MISSING_DEPENDENCIES=true
+          export USE_CCACHE=1
+          source build/envsetup.sh
+          lunch omni_saipan-eng
+          mka bootimage 2>&1 | tee build.log
+
+      - name: Locate build output
+        run: |
+          IMG="$GITHUB_WORKSPACE/twrp/out/target/product/saipan/boot.img"
+          if [ -f "$IMG" ]; then
+            echo "Build output found: $IMG"
+          else
+            echo "ERROR: boot.img not found"
+            find $GITHUB_WORKSPACE/twrp/out/target/product/ -name "*.img"
+            exit 1
+          fi
+
+      - name: Upload build log
+        if: always() && env.SKIP_BUILD == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-saipan
+          path: ${{ github.workspace }}/twrp/build.log
+
+      - name: Upload TWRP image
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.CUSTOM_BUILD_NAME }}
+          path: ${{ github.workspace }}/twrp/out/target/product/saipan/boot.img
+          
