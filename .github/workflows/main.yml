@@ -93,7 +93,7 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE/twrp
           git clone https://github.com/HackSucks/motorola_saipan-TWRP.git \
-            -b main \
+            -b android-12.1 \
             --depth=1 \
             device/motorola/saipan
 
