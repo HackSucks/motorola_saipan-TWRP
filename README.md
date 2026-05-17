@@ -1,11 +1,13 @@
+```
 #
 # Copyright (C) 2026 The Android Open Source Project
 # Copyright (C) 2026 SebaUbuntu's TWRP device tree generator
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-
+```
 # TWRP Device Tree for Motorola Moto G(50) 5G
+[![Build TWRP for Motorola Saipan](https://github.com/HackSucks/motorola_saipan-TWRP/actions/workflows/main.yml/badge.svg)](https://github.com/HackSucks/motorola_saipan-TWRP/actions/workflows/main.yml)
 
 <p align="center">
   <img src="https://fdn2.gsmarena.com/vv/pics/motorola/motorola-moto-g50-5g-1.jpg" alt="Motorola Moto G(50) 5G" width="300"/>
